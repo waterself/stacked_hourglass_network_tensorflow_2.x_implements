@@ -12,39 +12,31 @@ Stride 2
 Batch Normalization
 '''
 
-# TODO: Input Image - Conv Operation -> Max Pooling -> Conv Operation -> Max Pooling -> 
-# class ConvNet(keras.layers.Layer):
-#     '''
-#     need unit(output_size), input_dim = input_size
-#     '''
-#     def __init__(self, unit, input_dim, channel):
-#         super(ConvNet, self).__init__()
-#         w_init = tf.random_normal_initializer()
-
 class Residual(keras.layers.Layer):
     def __init__(self, 
                  momentum=0.99,
                  epsilon=0.001,
                  filters=256):
         super(Residual, self).__init__()
-        self.convStride = 2
-        self.convKernel = (7,7)
+
+        self.filters = filters
         
         self.relu = keras.layers.ReLU()
         self.batchNorm1 = keras.layers.BatchNormalization(momentum=momentum, epsilon=epsilon)
-        self.conv1 = keras.layers.Conv2D(filters=filters//2,kernel_size=1)
+        self.conv1 = keras.layers.Conv2D(filters=filters//2,kernel_size=1, activation='relu')
         self.batchNorm2 = keras.layers.BatchNormalization()
-        self.conv2 = keras.layers.Conv2D(filters=filters//2,kernel_size=3)
+        self.conv2 = keras.layers.Conv2D(filters=filters//2,kernel_size=3, activation='relu')
         self.batchNorm3 = keras.layers.BatchNormalization()
         self.conv3 = keras.layers.Conv2D(filters=1,kernel_size=1)
-        self.skipLayer = layers.Conv2D(filters=filters, kernel_size=1)
+        self.skipLayer = layers.Conv2D(filters=filters, kernel_size=1, activation='relu')
 
 
     def call(self, inputs, training=None, mask=None):
-        if self.need_skip:
-            shortCut = self.skipLayer(inputs)
-        else:
+        if inputs[-1] == self.filters:
             shortCut = self.inputs
+        else:
+            shortCut = self.skipLayer(inputs)
+            
 
         x = self.batchNorm1(inputs)
         x = self.relu(x)
@@ -64,9 +56,9 @@ class Residual(keras.layers.Layer):
 
 
 class Hourglass(keras.layers.Layer):
-    def __init__(self, d, f, batchNorm=None, increase = 0, trainable=True, name=None, dtype=None, dynamic=False, **kwargs):
+    def __init__(self, d, f, batchNorm=None, trainable=True, name=None, dtype=None, dynamic=False, **kwargs):
         super().__init__(trainable, name, dtype, dynamic, **kwargs)
-        df = 0
+        df = d+f
 
         self.up1 = Residual(f)
 
