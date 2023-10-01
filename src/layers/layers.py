@@ -31,25 +31,24 @@ class Residual(keras.layers.Layer):
         self.filters = filters
         
         self.relu = keras.layers.ReLU()
-
+        #print(filters//2)
         # define first - 128x1x1 conv
         self.batchNorm1 = keras.layers.BatchNormalization(momentum=momentum, epsilon=epsilon)
-        self.conv1 = keras.layers.Conv2D(filters=filters//2,kernel_size=1, activation=None, padding='same')
+        self.conv1 = keras.layers.Conv2D(filters=filters//2,kernel_size=1, activation='relu', padding='same')
         
         #define second - 128x3x3
         self.batchNorm2 = keras.layers.BatchNormalization(momentum=momentum, epsilon=epsilon)
-        self.conv2 = keras.layers.Conv2D(filters=filters//2,kernel_size=3, activation=None, padding='same')
+        self.conv2 = keras.layers.Conv2D(filters=filters//2,kernel_size=3, activation='relu', padding='same')
         
         #define third - 256x1x1
         self.batchNorm3 = keras.layers.BatchNormalization(momentum=momentum, epsilon=epsilon)
-        self.conv3 = keras.layers.Conv2D(filters=filters,kernel_size=1)
-        
+        self.conv3 = keras.layers.Conv2D(filters=filters,kernel_size=1, activation='relu', padding='same')
+
         #define skip - 256x1x1
         self.skipLayer = layers.Conv2D(filters=filters, kernel_size=1, activation=None, padding='same')
 
 
-    def call(self, inputs ,training=None, mask=None):
-        super().call(inputs, training, mask)
+    def call(self, inputs, mask=None):
         # if inputs channel same as filter size
         if inputs.shape[-1] == self.filters:
             shortCut = inputs
@@ -86,8 +85,9 @@ using recursive definition
 class Hourglass(keras.layers.Layer):
     def __init__(
             self, 
-            depth, 
+            depth,
             features, 
+            classes, 
             trainable=True, 
             name=None, dtype=None,
             dynamic=False,
@@ -104,7 +104,7 @@ class Hourglass(keras.layers.Layer):
         # Recursive hourglass
         # Resolution will downsampling to 64x64
         if self.depth > 1:
-            self.low2 = Hourglass(self.depth-1, features, debugPrint=self.debugPrint)
+            self.low2 = Hourglass(self.depth-1, features, classes, debugPrint=self.debugPrint)
         else:
             self.low2 = Residual(features)
 
@@ -112,7 +112,6 @@ class Hourglass(keras.layers.Layer):
         self.up2 = tf.keras.layers.UpSampling2D(size=2, interpolation="nearest")
 
     def call(self, inputs, *args, **kwargs):
-        super().call(inputs, *args, **kwargs)
         up1 = self.up1(inputs)
         if self.debugPrint == True:
             print('up1:', up1.shape)
@@ -142,6 +141,7 @@ class Hourglass(keras.layers.Layer):
 
 class IntermediateBlock(keras.layers.Layer):
     def __init__(self, 
+                 features,
                  classes,
                  prev = None,
                  momentum=0.99,
@@ -154,30 +154,76 @@ class IntermediateBlock(keras.layers.Layer):
         super().__init__(trainable, name, dtype, dynamic, **kwargs)
         # activation 함수에 대한 설명이 없을때 어떤 활성화 함수를 사용하는지?
         self.prev = prev
-        self.next1 = keras.layers.Conv2D(filters=classes,kernel_size=1, activation='relu')
-        self.next2 = keras.layers.Conv2D(filters=classes,kernel_size=1, activation='relu')
-        self.middle = keras.layers.Conv2D(filter=classes,kernel_size=1,activation='relu')
+       
+        self.next1 = keras.layers.Conv2D(filters=features,kernel_size=1, activation='relu', trainable=False)
+        self.next2 = keras.layers.Conv2D(filters=features,kernel_size=1, activation='relu', trainable=False)
+        self.middle1 = keras.layers.Conv2D(filters=classes, kernel_size=1,activation='relu' )
+        self.middle2 = keras.layers.Conv2D(filters=features, kernel_size=1,activation='relu', trainable=False)
 
     def call(self, inputs, *args, **kwargs):
-        super().call(inputs, *args, **kwargs)
-        x = self.netx1(inputs)
-        mid = self.superVision(x)
-        x = self.next2(x)
-        return keras.layers.Add()([self.prev, x, mid]), mid
+        x = self.next1(inputs) 
+        heatmap = self.middle1(x) 
+        x = self.next2(x) 
+        mid = self.middle2(heatmap) 
+        return keras.layers.Add()([self.prev, x, mid]), heatmap
     
 '''
 linked class for supervision
 '''
 class HourglassWithSuperVision(keras.layers.Layer):
-    def __init__(self, classes, supervision=True , trainable=True, name=None, dtype=None, dynamic=False, **kwargs):
+    def __init__(self, classes, features=256, supervision=True , trainable=True, name=None, dtype=None, dynamic=False, **kwargs):
         super().__init__(trainable, name, dtype, dynamic, **kwargs)
         self.prev = None
-        self.Hourglass = Hourglass(2, classes)
-        self.SuperVision = IntermediateBlock(classes)
+        self.Hourglass = Hourglass(2, features, classes)
+        self.SuperVision = IntermediateBlock(features, classes) 
 
     def call(self, inputs, *args, **kwargs):
-        super().call(inputs, *args, **kwargs)
         self.SuperVision.prev = inputs
         x = self.Hourglass(inputs)
         x, y = self.SuperVision(x)
         return x, y 
+
+
+# class IntermediateBlock(keras.layers.Layer):
+#     def __init__(self, 
+#                  features,
+#                  classes,
+#                  prev = None,
+#                  momentum=0.99,
+#                  epsilon=0.001,
+#                    trainable=True, 
+#                    name=None, 
+#                    dtype=None, 
+#                    dynamic=False, 
+#                    **kwargs):
+#         super().__init__(trainable, name, dtype, dynamic, **kwargs)
+#         # activation 함수에 대한 설명이 없을때 어떤 활성화 함수를 사용하는지?
+#         self.prev = prev
+#         self.batchNorm1 = keras.layers.BatchNormalization(momentum=momentum, epsilon=epsilon)
+#         self.batchNorm2 = keras.layers.BatchNormalization(momentum=momentum, epsilon=epsilon)
+#         self.batchNorm3 = keras.layers.BatchNormalization(momentum=momentum, epsilon=epsilon)
+#         self.batchNorm4 = keras.layers.BatchNormalization(momentum=momentum, epsilon=epsilon)
+#         self.relu1 = keras.layers.ReLU()
+
+#         self.next1 = keras.layers.Conv2D(filters=features,kernel_size=1, activation='relu')
+#         self.next2 = keras.layers.Conv2D(filters=features,kernel_size=1, activation='relu')
+#         self.middle1 = keras.layers.Conv2D(filters=classes, kernel_size=1,activation='relu')
+#         self.middle2 = keras.layers.Conv2D(filters=features, kernel_size=1,activation='relu')
+
+#     def call(self, inputs, *args, **kwargs):
+#         x = self.batchNorm1(inputs)
+#         x = self.relu1(x)
+#         x = self.next1(x) 
+
+#         mid = self.batchNorm2(x)
+#         mid = self.relu1(mid)
+#         heatmap = self.middle1(mid) 
+
+#         x = self.batchNorm3(x)
+#         x = self.relu1(x)
+#         x = self.next2(x) 
+
+#         mid = self.batchNorm4(x)
+#         mid = self.relu1(mid)
+#         mid = self.middle2(heatmap) 
+#         return keras.layers.Add()([self.prev, x, mid]), heatmap
