@@ -48,7 +48,7 @@ def get_visible(point):
 
     return is_visible
 
-val_split = 0
+val_split = 0.2
 
 def mpii_annotation(mat_path, out_path):
     mat_file = scipy.io.loadmat(mat_path)
@@ -139,6 +139,8 @@ def mpii_annotation(mat_path, out_path):
     with open(out_path, 'w') as file:
         json.dump(output_list, file)
 
-mat_path = 'D:/MPII-dataset/mpii_human_pose_v1_u12_2/mpii_human_pose_v1_u12_1.mat'
-out_path = 'D:/MPII-dataset/mpii_human_pose_v1_u12_2/mpii_human_pose_v1_u12_1.json'
+    print(f"train_count:{train_person_count}, val_count:{val_person_count}, total:{train_val_image_count}")
+
+mat_path = './src/dataset/MPII/mpii_human_pose_v1_u12_1.mat'
+out_path = './src/dataset/MPII/mpii_human_pose_v1_u12_1.json' 
 mpii_annotation(mat_path=mat_path, out_path=out_path)

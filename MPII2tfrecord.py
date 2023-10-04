@@ -12,21 +12,21 @@ target_width, target_height = 256, 256 # with paper - training details
 # Function to generate a single Gaussian heatmap for a keypoint
 def generate_heatmap(keypoint_x, keypoint_y, image_width, image_height, peak_value = 1.0, variance = 1.0):
 
-    target_x = keypoint_x // target_width
-    target_y = keypoint_y // target_height
+    # target_x = keypoint_x // target_width
+    # target_y = keypoint_y // target_height
 
-    x = np.arange(0, target_width, 1)
-    y = np.arange(0, target_height, 1)
+    x = np.arange(0, image_width, 1)
+    y = np.arange(0, image_height, 1)
     xv, yv = np.meshgrid(x, y)
 
     # Calculate the squared distance from each pixel to the keypoint
-    distance_squared = (xv - target_x)**2 + (yv - target_y)**2
+    distance_squared = (xv - keypoint_x)**2 + (yv - keypoint_y)**2
 
     # Create a heatmap with zeros
-    heatmap = np.zeros((image_height, image_width))
+    heatmap = np.zeros((image_height, image_width),dtype=np.float32)
 
     # Set the value at the keypoint to the peak_value
-    heatmap[int(target_y), int(target_x)] = peak_value
+    heatmap[int(keypoint_y), int(keypoint_x)] = peak_value
 
     # Optionally, apply Gaussian smoothing to the peak
     heatmap = peak_value * np.exp(-distance_squared / (2.0 * variance ** 2))
@@ -34,26 +34,16 @@ def generate_heatmap(keypoint_x, keypoint_y, image_width, image_height, peak_val
     return heatmap
 
 # Load JSON data
-#with open('../MPII/annotation/mpii_human_pose_v1_u12_1.json', 'r') as json_file:
-with open('./mpii_human_pose_v1_u12_2/mpii_human_pose_v1_u12_1.json', 'r') as json_file:
+#with open('./src/dataset/MPII/mpii_human_pose_v1_u12_1.json', 'r') as json_file:
+with open('./src/dataset/MPII/mpii_human_pose_v1_u12_1.json', 'r') as json_file:
     data = json.load(json_file)
 
-# Define the output directory for TFRecord files
-output_directory = './tfrecord_shards'
-os.makedirs(output_directory, exist_ok=True)
-
-# Define the maximum number of records per shard (you can adjust this)
-records_per_shard = 100
-
-# Create and write TFRecord shards
-shard_index = 0
-record_index = 0
-
+#open Writer
 train_writer = tf.io.TFRecordWriter('./src/dataset/MPII/train.tfrecord')
 val_writer = tf.io.TFRecordWriter('./src/dataset/MPII/val.tfrecord')
 
+# Each Annotation
 for annotation in data:
-
     # Load and preprocess the image
     img_path = '../MPII/images/' + annotation['img_paths']
     try:
@@ -65,13 +55,9 @@ for annotation in data:
 
 
     image_height, image_width, image_channel = image.shape
-    # TODO: 이미지 왜곡 해결
-    image = tf.image.resize_with_pad(image, target_height, target_width)
-    #image = image / 255.0
-
-
-    # Initialize an empty array to store the heatmaps for all keypoints
-    heatmaps = np.zeros((num_keypoints, target_height, target_width))
+    
+    # Initialize an empty array to store the heatmaps for all keypoints, witn original Resolution
+    heatmaps = np.zeros((num_keypoints, image_height, image_width),dtype=np.float32)
 
     # Extract keypoints from the annotation
     keypoints = annotation['joint_self']
@@ -86,18 +72,17 @@ for annotation in data:
     # Stack the individual heatmaps to create the final ground truth heatmap
     ground_truth_heatmap = np.stack(heatmaps, axis=-1)
 
+    # Resize With pad with Same Size of Data
+    image = tf.image.resize_with_pad(image, target_height, target_width)
+    ground_truth_heatmap = tf.image.resize_with_pad(ground_truth_heatmap, target_height, target_width)
+
     img_path_bytes = bytes(img_path, 'utf-8')
     img_path_feature = tf.train.Feature(bytes_list=tf.train.BytesList(value=[img_path_bytes]))
 
-    # img_path_feature = tf.train.Features()
-    # Encode the image as a bytes feature
-    #image_bytes = tf.io.encode_jpeg(image).numpy()
-    #image_feature = tf.train.Feature(float_list=tf.train.FloatList(value=[image.numpy()]))
-    image_feature = tf.io.serialize_tensor(image)
+    
     image_feature = tf.train.Feature(bytes_list=tf.train.BytesList(value=[image_feature.numpy()]))
 
     # Encode the ground truth heatmap as a float feature
-    #heatmap_feature = tf.train.Feature(float_list=tf.train.FloatList(value=[heatmap_feature]))
     heatmap_feature = tf.io.serialize_tensor(ground_truth_heatmap)
     heatmap_feature = tf.train.Feature(bytes_list=tf.train.BytesList(value=[heatmap_feature.numpy()]))
 
@@ -117,11 +102,10 @@ for annotation in data:
     else:
         val_writer.write(example.SerializeToString())
     
-    record_index += 1
+    
 
-    # Close the writer and start a new shard if needed
 
 train_writer.close()
 val_writer.close()
 
-print(f'TFRecord shards have been created in the directory "{output_directory}".')
+print(f'TFRecord shards have been created in the directory ./src/dataset/MPII/')

@@ -5,7 +5,7 @@ import os
 #     file_names = [f for f in os.listdir(path) if os.path.isfile(os.path.join(path, f))]
 #     return file_names
 
-def _parse_serial(serialized_string):
+def parse_serial(serialized_string):
     feature_description = {
         'img_path': tf.io.FixedLenFeature([], tf.string),
         'image': tf.io.FixedLenFeature([], tf.string),
@@ -18,7 +18,7 @@ def _parse_serial(serialized_string):
     return image, heatmap
 
 
-def read_record(batch_size : int, file_path):
-    raw_dataset = tf.data.TFRecordDataset(filenames=file_path).map(_parse_serial).batch(batch_size)
+def read_record(file_path, batch_size = None):
+    raw_dataset = tf.data.TFRecordDataset(filenames=file_path).map(parse_serial)
     return raw_dataset
 

@@ -5,7 +5,7 @@ import tensorflow as tf
 
 
 class StackedHourglassNet(keras.models.Model):
-    def __init__(self, classes, features=256, stacks=8, *args, **kwargs):
+    def __init__(self, classes,features=256, stacks=8, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.stacks = stacks
         self.hourglasses = [layers.HourglassWithSuperVision(classes)]
@@ -19,7 +19,10 @@ class StackedHourglassNet(keras.models.Model):
     
     def train_step(self, data):
         inputs, target = data
-        
+        #print('data_type',type(data))
+        #print("inputs:", type(inputs))
+        #print("target:", type(target))
+        #print(data)
         #TODO: 각 HOURGLASS 모듈이 가중치를 공유하여 학습하지 않도록
         #TODO: 한 HOURGLASS 모듈은 연결된 SuperVision모듈의 중간산출물로만 학습
         #TODO: Grounds Truth Target은 동일하게 적용
@@ -30,6 +33,8 @@ class StackedHourglassNet(keras.models.Model):
             in loop, each Hourglass will update weights independently
         '''
         nxt = self.preSequence(inputs)
+       
+      
         #nxt = inputs
         losses_list = []
         # calc gradients each Module
@@ -57,14 +62,19 @@ class StackedHourglassNet(keras.models.Model):
         return {m.name: m.result() for m in self.metrics}
         
     def call(self, inputs, training=None, mask=None):
-        x, mid = inputs
-        
+        x = inputs
+        x = x / 255.0 
         x = self.preSequence(x)
-
+        mid = None
         for hourglass in self.hourglasses:
             x, mid = hourglass(x)
-        
-        return x, mid
+       
+        #Gaussian feature to peak feature
+        max_kps = tf.reduce_max(mid, axis=(1, 2), keepdims=True)
+
+        mid = tf.cast(tf.where(mid == max_kps, 1, 0), dtype=tf.float32)
+
+        return mid
     
         
 
