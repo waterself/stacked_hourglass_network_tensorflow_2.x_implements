@@ -26,7 +26,7 @@ def generate_heatmap(keypoint_x, keypoint_y, image_width, image_height, peak_val
     heatmap = np.zeros((image_height, image_width),dtype=np.float32)
 
     # Set the value at the keypoint to the peak_value
-    heatmap[int(keypoint_y), int(keypoint_x)] = peak_value
+    heatmap[int(np.clip(keypoint_y, 0, image_height-1)), int(np.clip(keypoint_x, 0, image_width-1))] = peak_value
 
     # Optionally, apply Gaussian smoothing to the peak
     heatmap = peak_value * np.exp(-distance_squared / (2.0 * variance ** 2))
@@ -42,8 +42,9 @@ with open('./src/dataset/MPII/mpii_human_pose_v1_u12_1.json', 'r') as json_file:
 train_writer = tf.io.TFRecordWriter('./src/dataset/MPII/train.tfrecord')
 val_writer = tf.io.TFRecordWriter('./src/dataset/MPII/val.tfrecord')
 
+total = len(data)
 # Each Annotation
-for annotation in data:
+for idx, annotation in enumerate(data):
     # Load and preprocess the image
     img_path = '../MPII/images/' + annotation['img_paths']
     try:
@@ -65,9 +66,12 @@ for annotation in data:
     # Iterate through the keypoints and generate a heatmap for each one
     for i in range(num_keypoints):
         keypoint_x, keypoint_y, visibility = keypoints[i]
-        if visibility >= 0:  # You can adjust this threshold based on your dataset
+        if keypoint_x == 0 and keypoint_y == 0:
+            continue  
+        if visibility >= 0:
             heatmap = generate_heatmap(keypoint_x, keypoint_y, image_width, image_height, variance)
             heatmaps[i] = heatmap
+
 
     # Stack the individual heatmaps to create the final ground truth heatmap
     ground_truth_heatmap = np.stack(heatmaps, axis=-1)
@@ -79,7 +83,7 @@ for annotation in data:
     img_path_bytes = bytes(img_path, 'utf-8')
     img_path_feature = tf.train.Feature(bytes_list=tf.train.BytesList(value=[img_path_bytes]))
 
-    
+    image_feature = tf.io.serialize_tensor(image)    
     image_feature = tf.train.Feature(bytes_list=tf.train.BytesList(value=[image_feature.numpy()]))
 
     # Encode the ground truth heatmap as a float feature
@@ -101,6 +105,7 @@ for annotation in data:
         train_writer.write(example.SerializeToString())
     else:
         val_writer.write(example.SerializeToString())
+    print(f"process:{idx}/{total}", end='\r', flush=True)
     
     
 
@@ -109,3 +114,4 @@ train_writer.close()
 val_writer.close()
 
 print(f'TFRecord shards have been created in the directory ./src/dataset/MPII/')
+
