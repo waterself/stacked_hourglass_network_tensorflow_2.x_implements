@@ -25,8 +25,7 @@ class StackedHourglassNet(keras.models.Model):
             target will implements Ground Truth target for coco dataset object detection
             in loop, each Hourglass will update weights independently
         '''
-        # Normalize image values
-        nxt = inputs / 255.0
+        nxt = inputs / 255
         nxt = self.preSequence(inputs)
 
         # calc gradients each Module
@@ -45,19 +44,12 @@ class StackedHourglassNet(keras.models.Model):
         
     def call(self, inputs, training=None, mask=None):
         x = inputs
-        # Normalize image values
 
-        x = x / 255.0 
+        x = x / 255
         x = self.preSequence(x)
-        mid = None
         for hourglass in self.hourglasses:
             x, mid = hourglass(x)
-       
         
-        max_kps = tf.reduce_max(mid, axis=(inputs.shape[-3], inputs.shape[-2]), keepdims=True)
-
-        mid = tf.cast(tf.where(mid == max_kps, 1, 0), dtype=tf.float32)
-
         return mid
     
         

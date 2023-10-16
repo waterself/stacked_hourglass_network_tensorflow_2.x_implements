@@ -1,11 +1,14 @@
-﻿import tensorflow as tf
-import numpy as np
+﻿import numpy as np
 import datetime
+import os
+import tensorflow as tf
 from tensorflow import keras
 
 from src.model.StackedHourglassNetwork import StackedHourglassNet
 from src.layers.layers import HourglassWithSuperVision
 from src.loss import MSE
+from src.callback import custom_callback
+from src.metric.selected_metrics import selected_metrics as jsp
 
 
 #Load Model
@@ -14,7 +17,7 @@ config = {
     'joint_num' : 16,
     'stack_num' : 8, 
     'resolution' : 256,
-    'optimizer' : keras.optimizers.Adam(learning_rate=0.0001),
+    'optimizer' : keras.optimizers.Adam,
     'loss' : MSE.mean_square_error,
     'epoch' : 10,
     'batch_size': 4, 
@@ -29,7 +32,7 @@ stacked_hourglass = StackedHourglassNet(
 stacked_hourglass.compile(
     optimizer=config['optimizer'],
     loss=config['loss'],
-    metrics=['accuracy'],
+    metrics=[jsp,'mae'],
     )
 
 from src.dataset.MPII.read_tfrecord import read_record, parse_serial
@@ -58,23 +61,26 @@ log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
 #file_writer = tf.summary.create_file_writer(log_dir)
 
-checkpoint_path = "training_1/cp.ckpt"
+checkpoint_path = "training_1/cp-{epoch:04d}.ckpt"
+checkpoint_dir = os.path.dirname(checkpoint_path)
 cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                  save_weights_only=True,
                                                  verbose=1)
+val_callback = custom_callback.PoseEstimationCallback(log_dir=log_dir, 
+                                                      validation_data=val_data, 
+                                                      num_samples=3)
+es_callback = tf.keras.callbacks.EarlyStopping(monitor = 'val_loss',
+                                                min_delta=0.00001,
+                                                patience = 5,
+                                                mode='auto')
+
+stacked_hourglass.load_weights(checkpoint_path)
+
 
 # Iterate through the batch and print the shape of the first sample
 for idx, (sample_image, sample_heatmap) in enumerate(first_batch):
     print("Shape of the first sample image:", sample_image.shape)
     print("Shape of the first sample heatmap:", sample_heatmap.shape)
-#    with file_writer.as_default():
-#        tf.summary.image(f'image{idx}', tf.cast(sample_image, dtype=tf.uint8), 0)
-#        sum_heatmap = tf.reduce_sum(sample_heatmap, axis=-1, keepdims=True)
-#        sample_heatmap = tf.where(sum_heatmap>0, 255 , sum_heatmap)
-#        sample_heatmap_vis = tf.image.grayscale_to_rgb(sample_heatmap)
-#        tf.summary.image(f'heatmap{idx}',sample_heatmap_vis, 0)
-#file_writer.close()
-
 
 
 if tf.test.is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
@@ -103,7 +109,10 @@ if tf.test.is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
                 validation_batch_size=config['batch_size'],
                 steps_per_epoch=15400 // config['batch_size'],
                 validation_steps=3785 // config['batch_size'],
-                callbacks = [tensorboard_callback, cp_callback],
+                callbacks = [tensorboard_callback, 
+                             cp_callback,
+                             val_callback,
+                             es_callback],
                 )
         stacked_hourglass.save(f"./{config['stack_num']}stcks_{config['epoch']}epch/")
 else:
