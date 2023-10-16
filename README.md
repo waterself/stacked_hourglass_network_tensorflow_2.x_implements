@@ -10,7 +10,7 @@ implement by Stacked Hourglass Network for Human Pose Estimate https://arxiv.org
 }
 
 
-Train by MPII Human Pose Database
+Trained by MPII Human Pose Database
 @inproceedings{andriluka14cvpr,
                author = {Mykhaylo Andriluka and Leonid Pishchulin and Peter Gehler and Schiele, Bernt}
                title = {2D Human Pose Estimation: New Benchmark and State of the Art Analysis},
