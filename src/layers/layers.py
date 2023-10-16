@@ -149,8 +149,8 @@ class IntermediateBlock(keras.layers.Layer):
                    dynamic=False,
                    **kwargs):
         super().__init__(trainable, name, dtype, dynamic, **kwargs)
-        # activation 함수에 대한 설명이 없을때 어떤 활성화 함수를 사용하는지?
-        self.next1 = keras.layers.Conv2D(filters=features//2, kernel_size=1, activation='relu', trainable=False)
+        #relu - linear to feature for nonlinearity
+        self.next1 = keras.layers.Conv2D(filters=features, kernel_size=1, activation='relu', trainable=False)
         self.next2 = keras.layers.Conv2D(filters=features, kernel_size=1, activation='linear', trainable=False)
         self.middle1 = keras.layers.Conv2D(filters=classes, kernel_size=1,activation='linear', trainable=True)
         self.middle2 = keras.layers.Conv2D(filters=features, kernel_size=1, activation='linear', trainable=False)

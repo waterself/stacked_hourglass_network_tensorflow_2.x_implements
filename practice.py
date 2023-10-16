@@ -8,9 +8,9 @@
 import tensorflow as tf
 from src.layers import layers
 
-x = tf.random.uniform(shape=(1,256,256,256), minval=0, maxval=255, dtype=tf.float32)
+x = tf.random.uniform(shape=(2,256,256,3), minval=0, maxval=255, dtype=tf.float32)
 
-hourglass = layers.Hourglass(depth=2, classes=256, debugPrint=True)
+hourglass = layers.Hourglass(depth=2, classes=16, features=256, debugPrint=True)
 output = hourglass(x)
 #output = layers.Residual(256, debugPrint=True)(x)
 
