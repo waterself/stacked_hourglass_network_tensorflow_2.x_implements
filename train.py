@@ -17,10 +17,10 @@ config = {
     'joint_num' : 16,
     'stack_num' : 8, 
     'resolution' : 256,
-    'optimizer' : keras.optimizers.Adam,
-    'loss' : MSE.mean_square_error,
+    'optimizer' : keras.optimizers.Adam(),
+    'loss' : MSE.MseChannel(),
     'epoch' : 10,
-    'batch_size': 4, 
+    'batch_size': 2, 
 
 }
 
@@ -37,19 +37,21 @@ stacked_hourglass.compile(
 
 from src.dataset.MPII.read_tfrecord import read_record, parse_serial
 import matplotlib.pyplot as plt
-train_data = read_record(file_path='./src/dataset/MPII/train.tfrecord')
-val_data = read_record(file_path='./src/dataset/MPII/val.tfrecord')
+train_data = read_record(file_path='./src/dataset/MPII/train_64.tfrecord')
+val_data = read_record(file_path='./src/dataset/MPII/val_64.tfrecord')
 
 train_data = train_data.shuffle(2000)
 val_data = val_data.shuffle(400)
 
 train_data = train_data.padded_batch(
     config['batch_size'],
-    padded_shapes=((config['resolution'], config['resolution'], 3), (config['resolution'], config['resolution'], 16)))
+    padded_shapes=((config['resolution'], config['resolution'], 3), (64,64,16)))
 
 val_data = val_data.padded_batch(
     config['batch_size'],
-    padded_shapes=((config['resolution'], config['resolution'], 3), (config['resolution'], config['resolution'], 16)))
+    padded_shapes=((config['resolution'], config['resolution'], 3), (64,64,16)))
+# train_data = train_data.batch(config['batch_size'], drop_remainder=True)
+# val_data = val_data.batch(config['batch_size'], drop_remainder=True)
 
 print(type(train_data))
 #train_data.repeat(config['epoch'])
@@ -63,24 +65,31 @@ tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram
 
 checkpoint_path = "training_1/cp-{epoch:04d}.ckpt"
 checkpoint_dir = os.path.dirname(checkpoint_path)
+
+
+latest = tf.train.latest_checkpoint(checkpoint_dir)
+
+if latest is not None:
+    stacked_hourglass.load_weights(latest)
+
 cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
                                                  save_weights_only=True,
                                                  verbose=1)
 val_callback = custom_callback.PoseEstimationCallback(log_dir=log_dir, 
-                                                      validation_data=val_data, 
-                                                      num_samples=3)
+                                                      validation_data=val_data,
+                                                      batch_size=config['batch_size'],
+                                                      num_samples=4)
 es_callback = tf.keras.callbacks.EarlyStopping(monitor = 'val_loss',
                                                 min_delta=0.00001,
                                                 patience = 5,
                                                 mode='auto')
 
-stacked_hourglass.load_weights(checkpoint_path)
 
 
 # Iterate through the batch and print the shape of the first sample
 for idx, (sample_image, sample_heatmap) in enumerate(first_batch):
     print("Shape of the first sample image:", sample_image.shape)
-    print("Shape of the first sample heatmap:", sample_heatmap.shape)
+    print("Shape of the first sample heatmap:", sample_heatmap[0].shape)
 
 
 if tf.test.is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
@@ -100,8 +109,8 @@ if tf.test.is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
             print(np.max(sample_image.numpy()))
             print(np.min(sample_image.numpy()))
             test_out = stacked_hourglass(sample_image)
-            print("test_out_shape:", test_out.shape)
-
+            print("test_out_shape:", test_out[0].shape)
+        print(stacked_hourglass.summary())
         stacked_hourglass.fit(train_data.repeat(config['epoch']), 
                 epochs=config['epoch'],
                 validation_data=val_data.repeat(config['epoch']), 

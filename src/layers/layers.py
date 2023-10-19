@@ -76,7 +76,25 @@ class Residual(keras.layers.Layer):
 
         x = tf.keras.layers.Add()([x, shortCut])
         return x
+    
+class PreSequence(keras.layers.Layer):
+    def __init__(self, features = 3, trainable=True, name=None, dtype=None, dynamic=False, **kwargs):
+        super().__init__(trainable, name, dtype, dynamic, **kwargs)
+        self.conv1 = keras.layers.Conv2D(filters=features, kernel_size=7, strides=(2, 2), activation='relu', padding='same')
+        self.batchNorm1 = keras.layers.BatchNormalization()
+        self.residual1 = Residual()
+        self.pool1 = tf.keras.layers.MaxPool2D((2,2))
+        self.residual2 = Residual()
+        self.pool2 = tf.keras.layers.MaxPool2D((2,2))
 
+    def call(self, inputs, *args, **kwargs):
+        x = self.conv1(inputs)
+        x = self.batchNorm1(x)
+        x = self.residual1(x)
+        x = self.pool1(x)
+        x = self.residual2(x)
+        return x
+    
 
 '''
 implements for hourglass module,
@@ -150,20 +168,26 @@ class IntermediateBlock(keras.layers.Layer):
                    **kwargs):
         super().__init__(trainable, name, dtype, dynamic, **kwargs)
         #relu - linear to feature for nonlinearity
-        self.next1 = keras.layers.Conv2D(filters=features, kernel_size=1, activation='relu', trainable=False)
-        self.next2 = keras.layers.Conv2D(filters=features, kernel_size=1, activation='linear', trainable=False)
-        self.middle1 = keras.layers.Conv2D(filters=classes, kernel_size=1,activation='linear', trainable=True)
-        self.middle2 = keras.layers.Conv2D(filters=features, kernel_size=1, activation='linear', trainable=False)
+        self.next1 = keras.layers.Conv2D(filters=features, kernel_size=1, activation='relu', padding='same')
+        self.next2 = keras.layers.Conv2D(filters=features, kernel_size=1, activation='linear',padding='same')
+        self.middle1 = keras.layers.Conv2D(filters=classes, kernel_size=1,activation='linear',  padding='same')
+        self.middle2 = keras.layers.Conv2D(filters=features, kernel_size=1, activation='linear', padding='same')
 
     def call(self, inputs, *args, **kwargs):
         x = self.next1(inputs)
         heatmap = self.middle1(x)
+        mid = self.middle2(heatmap)
+        x = self.next2(x)
+        return x, mid, heatmap
+    
+    # def get_next_weight(self):
+    #     return self.middle2.trainable_variables, self.next2.trainable_variables
 
 '''
 linked class for supervision
 '''
 class HourglassWithSuperVision(keras.layers.Layer):
-    def __init__(self, classes, depth = 2, features=256, supervision=True , trainable=True, name=None, dtype=None, dynamic=False, **kwargs):
+    def __init__(self, classes, depth = 4, features=256, supervision=True , trainable=True, name=None, dtype=None, dynamic=False, **kwargs):
         super().__init__(trainable, name, dtype, dynamic, **kwargs)
         self.Hourglass = Hourglass(depth, features, classes)
         self.SuperVision = IntermediateBlock(features, classes)

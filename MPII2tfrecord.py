@@ -39,8 +39,8 @@ with open('./src/dataset/MPII/mpii_human_pose_v1_u12_1.json', 'r') as json_file:
     data = json.load(json_file)
 
 #open Writer
-train_writer = tf.io.TFRecordWriter('./src/dataset/MPII/train.tfrecord')
-val_writer = tf.io.TFRecordWriter('./src/dataset/MPII/val.tfrecord')
+train_writer = tf.io.TFRecordWriter('./src/dataset/MPII/train_64.tfrecord')
+val_writer = tf.io.TFRecordWriter('./src/dataset/MPII/val_64.tfrecord')
 
 total = len(data)
 # Each Annotation
@@ -77,8 +77,9 @@ for idx, annotation in enumerate(data):
     ground_truth_heatmap = np.stack(heatmaps, axis=-1)
 
     # Resize With pad with Same Size of Data
-    image = tf.image.resize_with_pad(image, target_height, target_width)
-    ground_truth_heatmap = tf.image.resize_with_pad(ground_truth_heatmap, target_height, target_width)
+    image = tf.image.resize(image, (target_height, target_width), antialias=True)
+    ground_truth_heatmap = tf.image.resize(ground_truth_heatmap, (64, 64), antialias=True)
+
 
     img_path_bytes = bytes(img_path, 'utf-8')
     img_path_feature = tf.train.Feature(bytes_list=tf.train.BytesList(value=[img_path_bytes]))

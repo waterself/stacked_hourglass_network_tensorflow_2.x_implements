@@ -14,13 +14,12 @@ from tensorflow import keras
 #         gaussian_mse = tf.exp(-squared_error / (2 * self.sigma**2)) / (self.sigma * tf.sqrt(2 * 3.14159265359))
 #         return tf.reduce_mean(gaussian_mse)
 
-class mean_square_error(keras.losses.Loss):
+class MseChannel(keras.losses.Loss):
     def call(self, y_true, y_pred):
-        mse = keras.losses.mean_squared_error(y_true=y_true, y_pred=y_pred)
-        return mse
+        stacked_mse = tf.stack([tf.reduce_mean(tf.square(y_true[:,:,idx] - y_pred[:,:,idx])) for idx in range(y_true.shape[-1])])
+        return stacked_mse
 
 # def mean_square_error(y_true, y_pred):
 #     return tf.reduce_mean(tf.square(y_true - y_pred))
 #     #return keras.losses.mean_squared_error(y_true=y_true, y_pred=y_pred)
 #     # return tf.reduce_mean(mse)
-
