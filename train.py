@@ -1,0 +1,134 @@
+﻿import numpy as np
+import datetime
+import os
+import tensorflow as tf
+from tensorflow import keras
+
+from src.model.StackedHourglassNetwork import StackedHourglassNet
+from src.layers.layers import HourglassWithSuperVision
+from src.loss import MSE
+from src.loss import heatmap_loss
+from src.callback import custom_callback
+from src.metric.PCK import PCK as pck
+
+
+#Load Model
+
+config = {
+    'joint_num' : 16,
+    'stack_num' : 8, 
+    'resolution' : 256,
+    'optimizer' : keras.optimizers.Adam(learning_rate=1e-3),
+    'loss' : heatmap_loss.HeatmapLoss(),
+    'epoch' : 300,
+    'batch_size': 32, 
+}
+
+model = StackedHourglassNet(
+    classes=int(config['joint_num']),
+    stacks=config['stack_num']
+    )
+
+model.compile(
+    optimizer=config['optimizer'],
+    loss=[heatmap_loss.HeatmapLoss() for _ in range(8)],
+    metrics=[pck,'acc'],
+    )
+
+from src.dataset.MPII.read_tfrecord import read_record, parse_serial
+from src.dataset.MPII import preprocess
+import matplotlib.pyplot as plt
+
+train_data = read_record(file_path='./src/dataset/MPII/train_64.tfrecord')
+val_data = read_record(file_path='./src/dataset/MPII/val_64.tfrecord')
+
+train_data = train_data.shuffle(2000)
+val_data = val_data.shuffle(400)
+
+train_data = train_data.padded_batch(
+    config['batch_size'],
+    padded_shapes=((config['resolution'], config['resolution'], 3), (64,64,16)))
+
+val_data = val_data.padded_batch(
+    config['batch_size'],
+    padded_shapes=((config['resolution'], config['resolution'], 3), (64,64,16)))
+
+# train_data = train_data.batch(config['batch_size'], drop_remainder=True)
+# val_data = val_data.batch(config['batch_size'], drop_remainder=True)
+
+print(type(train_data))
+#train_data.repeat(config['epoch'])
+#val_data.repeat(config['epoch'])
+
+first_batch = train_data.take(1)
+
+log_dir = "logs/fit/" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
+#file_writer = tf.summary.create_file_writer(log_dir)
+
+checkpoint_path = "training_1/cp-{epoch:04d}.ckpt"
+checkpoint_dir = os.path.dirname(checkpoint_path)
+
+
+latest = tf.train.latest_checkpoint(checkpoint_dir)
+
+if latest is not None:
+    model.load_weights(latest)
+    print(latest)
+
+
+cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=checkpoint_path,
+                                                 save_weights_only=True,
+                                                 verbose=1)
+val_callback = custom_callback.PoseEstimationCallback(log_dir=log_dir, 
+                                                      validation_data=val_data,
+                                                      batch_size=config['batch_size'],
+                                                      num_samples=config['batch_size'])
+es_callback = tf.keras.callbacks.EarlyStopping(monitor = 'val_loss',
+                                                min_delta=0.00001,
+                                                patience = 5,
+                                                mode='auto')
+
+
+
+# Iterate through the batch and print the shape of the first sample
+for idx, (sample_image, sample_heatmap) in enumerate(first_batch):
+    print("Shape of the first sample image:", sample_image.shape)
+    print("Shape of the first sample heatmap:", sample_heatmap[0].shape)
+
+
+if tf.test.is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
+    print("GPU is available. Using GPU for TensorFlow operations.")
+    
+    physical_devices = tf.config.list_physical_devices('GPU')
+    if len(physical_devices) > 0:
+        try:
+            tf.config.experimental.set_memory_growth(physical_devices[0], True)
+        except RuntimeError as e:
+            print(e)
+    print("GPU, run Model.fit")
+    with tf.device('/GPU:0'):
+        for sample_image, sample_heatmap in first_batch:
+            print(f"image_shape{sample_image.shape}")    
+            print(f"heatmap_shape{sample_heatmap.shape}")
+            print(np.max(sample_image.numpy()))
+            print(np.min(sample_image.numpy()))
+            test_out = model(sample_image)
+            print("test_out_shape:", test_out[-1].shape)
+        #print(stacked_hourglass.summary())
+        model.fit(train_data.repeat(config['epoch']), 
+                epochs=config['epoch'],
+                validation_data=val_data.repeat(config['epoch']), 
+                batch_size=config['batch_size'],
+                validation_batch_size=config['batch_size'],
+                steps_per_epoch=(15400*2) // config['batch_size'],
+                validation_steps=3785 // config['batch_size'],
+                callbacks = [tensorboard_callback, 
+                             cp_callback,
+                             val_callback,],
+                )
+        model.save(f"./{config['stack_num']}stcks_{config['epoch']}epch/")
+else:
+    print("No GPU available. Using CPU for TensorFlow operations.")
+
+
